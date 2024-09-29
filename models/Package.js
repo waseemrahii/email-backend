@@ -1,10 +1,27 @@
 const mongoose = require('mongoose');
 
 const PackageSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    maxEmails: { type: Number, required: true },
-    price: { type: Number, required: true },
-    createdAt: { type: Date, default: Date.now }
+    type: {
+        type: String,
+        enum: ['basic', 'standard', 'premium'],
+        required: true,
+    },
+    maxEmailsPerMonth: {
+        type: Number,
+        required: true,
+    },
+    maxEmailsSentPerMonth: { // New field
+        type: Number,
+        required: true,
+    },
+    packageDuration: {
+        type: Number,
+        required: true, // Duration in days
+    },
+    price: {
+        type: Number,
+        required: true,
+    },
 });
 
 module.exports = mongoose.model('Package', PackageSchema);

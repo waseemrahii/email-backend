@@ -1,16 +1,30 @@
 const express = require('express');
-const { signup, signin, getAllUsers, updateUserRole, deleteUser, forgotPassword, resetPassword } = require('../controllers/userController');
-const { isAdmin, isAuthenticated } = require('../middleware/authMiddleware');
+const {
+    signup,
+    signin,
+    updateSubscription,
+    updateSMTP,
+    forgotPassword,
+    resetPassword,
+    deleteUser,
+    getAllUsers,
+    getUserById
+} = require('../controllers/userController');
+const { isAuthenticated, isAdmin } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
+// Public Routes
 router.post('/signup', signup);
 router.post('/signin', signin);
-router.get('/', isAuthenticated, isAdmin, getAllUsers);
-router.put('/update-role', isAuthenticated, isAdmin, updateUserRole);
-// router.delete('/:userId', isAuthenticated, isAdmin, deleteUser); 
-router.delete('/:id',  deleteUser); 
 router.post('/forgot-password', forgotPassword);
 router.put('/reset-password/:token', resetPassword);
 
+// Private Routes (Require Authentication)
+router.put('/update-subscription',  updateSubscription);  // Update subscription ID
+router.put('/update-smtp',  updateSMTP);                  // Update SMTP credentials
+router.delete('/delete/:id', isAuthenticated, isAdmin, deleteUser);        // Delete user
+// router.get('/', isAuthenticated, isAdmin, getAllUsers);           // Get all users (admin only)
+router.get('/',  getAllUsers);           // Get all users (admin only)
+router.get('/:id', getUserById);  
 module.exports = router;

@@ -11,18 +11,7 @@ const SubscriptionSchema = new mongoose.Schema({
         enum: ['basic', 'standard', 'premium'],
         required: true
     },
-    emailsPerMonth: {
-        type: Number,
-        required: true
-    },
-    emailsSentThisMonth: {
-        type: Number,
-        default: 0
-    },
-    packageExpiry: {
-        type: Date,
-        required: true
-    },
+  
     isActive: {
         type: Boolean,
         default: true

@@ -2,13 +2,13 @@
 
 const nodemailer = require('nodemailer');
 
-const sendBulkEmails = async (emails, subject, body) => {
+const sendBulkEmails = async (emails, subject, body, user) => {
     const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
         port: process.env.SMTP_PORT,
         auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
+            user: user.smtpUser,
+            pass: user.smtpPass, // Ensure this is hashed/encrypted in the User model for security
         },
         tls: {
             rejectUnauthorized: false,
@@ -17,7 +17,7 @@ const sendBulkEmails = async (emails, subject, body) => {
 
     const emailPromises = emails.map(email => {
         return transporter.sendMail({
-            from: '"Bulk Email Sender" <no-reply@example.com>',
+            from: `"Your App" <${user.smtpUser}>`,
             to: email,
             subject,
             text: body

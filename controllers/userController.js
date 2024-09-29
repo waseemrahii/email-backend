@@ -1,160 +1,187 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const asyncHandler = require('express-async-handler');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
 
-// User Signup
-const signup = asyncHandler(async (req, res) => {
-    const { username, email, password, role } = req.body;
+// Signup controller
+exports.signup = async (req, res) => {
+    const { name, email, password } = req.body;
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-        return res.status(400).json({ message: "User already exists." });
+    try {
+        const userExists = await User.findOne({ email });
+        if (userExists) {
+            return res.status(400).json({ message: 'User already exists' });
+        }
+
+        const newUser = new User({
+            name,
+            email,
+            password
+        });
+
+        await newUser.save();
+
+        const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+        res.status(201).json({
+            token,
+            user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role }
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
     }
+};
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = new User({
-        username,
-        email,
-        password: hashedPassword,
-        role
-    });
-
-    await user.save();
-
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-
-    res.status(201).json({ user: { id: user._id, username, email, role }, token });
-});
-
-// User Signin
-const signin = asyncHandler(async (req, res) => {
+// Signin controller
+exports.signin = async (req, res) => {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
-    if (!user) {
-        return res.status(400).json({ message: "Invalid credentials." });
+    try {
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid email or password' });
+        }
+
+        const isMatch = await user.matchPassword(password);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Invalid email or password' });
+        }
+
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+        res.json({
+            token,
+            user: { id: user._id, name: user.name, email: user.email, role: user.role }
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
     }
+};
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-        return res.status(400).json({ message: "Invalid credentials." });
+
+exports.updateSubscription = async (req, res) => {
+    const { userId, subscriptionId } = req.body;
+
+    try {
+        const user = await User.findById(userId); // Find user using userId from req.body
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        user.subscription = subscriptionId; // Update subscription ID
+        await user.save();
+
+        res.status(200).json({ message: 'Subscription updated successfully', user });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
     }
+};
 
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-    res.status(200).json({ user: { id: user._id, username: user.username, email, role: user.role }, token });
-});
+exports.updateSMTP = async (req, res) => {
+    const { userId, smtpUser, smtpPass } = req.body;
 
-// Get All Users
-const getAllUsers = asyncHandler(async (req, res) => {
-    const users = await User.find();
-    res.status(200).json(users);
-});
+    try {
+        const user = await User.findById(userId); // Find user using userId from req.body
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
 
-// Update User Role
-const updateUserRole = asyncHandler(async (req, res) => {
-    const { userId, role } = req.body;
+        user.smtpUser = smtpUser;
+        user.smtpPass = smtpPass; // Save new SMTP credentials
+        await user.save();
 
-    const user = await User.findById(userId);
-    if (!user) {
-        return res.status(404).json({ message: 'User not found.' });
+        res.status(200).json({ message: 'SMTP credentials updated successfully', user });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
     }
+};
 
-    user.role = role;
-    await user.save();
 
-    res.status(200).json({ message: 'User role updated successfully.', user });
-});
-
-// Forgot Password
-const forgotPassword = asyncHandler(async (req, res) => {
+// Forgot Password controller
+exports.forgotPassword = async (req, res) => {
     const { email } = req.body;
-    const user = await User.findOne({ email });
 
-    if (!user) {
-        return res.status(404).json({ message: 'No user with that email address.' });
+    try {
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const resetToken = crypto.randomBytes(20).toString('hex');
+        user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+        user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // Token valid for 10 minutes
+
+        await user.save();
+
+        // Send resetToken via email (SMTP not included in this example)
+        res.status(200).json({ message: 'Password reset token sent', resetToken });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
     }
+};
 
-    // Create reset token
-    const resetToken = crypto.randomBytes(20).toString('hex');
-
-    user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
-
-    await user.save();
-
-    // Send reset email
-    const resetUrl = `${req.protocol}://${req.get('host')}/api/users/reset-password/${resetToken}`;
-
-    // const transporter = nodemailer.createTransport({
-    //     service: 'Gmail', // Example using Gmail
-    //     auth: {
-    //         user: process.env.EMAIL_USERNAME,
-    //         pass: process.env.EMAIL_PASSWORD,
-    //     },
-    // });
-    const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: process.env.SMTP_PORT,
-        auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
-        },
-        debug: true,  // Add this to get more detailed output
-    });
-    
-    const message = {
-        to: email,
-        from: process.env.EMAIL_FROM,
-        subject: 'Password Reset Request',
-        html: `<p>You requested a password reset.</p>
-               <p>Click this <a href="${resetUrl}">link</a> to reset your password.</p>`
-    };
-
-    await transporter.sendMail(message);
-
-    res.status(200).json({ message: 'Password reset email sent.' });
-});
-
-// Reset Password
-const resetPassword = asyncHandler(async (req, res) => {
+// Reset Password controller
+exports.resetPassword = async (req, res) => {
     const { token } = req.params;
     const { password } = req.body;
 
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+    try {
+        const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+        const user = await User.findOne({
+            resetPasswordToken: hashedToken,
+            resetPasswordExpire: { $gt: Date.now() }
+        });
 
-    const user = await User.findOne({
-        resetPasswordToken: hashedToken,
-        resetPasswordExpires: { $gt: Date.now() }
-    });
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid or expired token' });
+        }
 
-    if (!user) {
-        return res.status(400).json({ message: 'Invalid or expired token.' });
+        user.password = password;
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpire = undefined;
+        await user.save();
+
+        res.status(200).json({ message: 'Password updated successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
     }
+};
 
-    user.password = await bcrypt.hash(password, 10);
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
+// Delete user controller (admin only)
+exports.deleteUser = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
 
-    await user.save();
-
-    res.status(200).json({ message: 'Password reset successful.' });
-});
-
-
-const deleteUser = asyncHandler(async (req, res) => {
-    const { id } = req.params; 
-
-    const user = await User.findById(id);
-    if (!user) {
-        return res.status(404).json({ message: 'User not found.' });
+        await user.remove();
+        res.status(200).json({ message: 'User deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
     }
+};
 
-    await User.findByIdAndDelete(id); 
-    res.status(200).json({ message: 'User deleted successfully.' });
-});
-module.exports = { signup, signin, getAllUsers, updateUserRole,deleteUser, forgotPassword, resetPassword };
+// Get all users controller (admin only)
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find();
+        res.status(200).json(users);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
+    }
+};
+
+
+exports.getUserById = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id).select('-password'); // Exclude password field
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        res.json(user);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error' });
+    }
+};
