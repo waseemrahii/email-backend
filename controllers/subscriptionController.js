@@ -1,43 +1,30 @@
 const Subscription = require('../models/Subscription');
+const asyncHandler = require('express-async-handler');
 
-exports.subscribePackage = async (req, res) => {
+const getPackageDetails = (packageType) => {
+    switch (packageType) {
+        case 'basic': return { emailsPerMonth: 10, packageDuration: 30 };
+        case 'standard': return { emailsPerMonth: 50, packageDuration: 30 };
+        case 'premium': return { emailsPerMonth: 100, packageDuration: 30 };
+        default: throw new Error('Invalid package type');
+    }
+};
+
+exports.subscribePackage = asyncHandler(async (req, res) => {
     const { userId, packageType } = req.body;
 
-    let emailsPerMonth;
-    let packageDuration; // in days
-
-    switch(packageType) {
-        case 'basic':
-            emailsPerMonth = 10;
-            packageDuration = 30;
-            break;
-        case 'standard':
-            emailsPerMonth = 50;
-            packageDuration = 30;
-            break;
-        case 'premium':
-            emailsPerMonth = 100;
-            packageDuration = 30;
-            break;
-        default:
-            return res.status(400).json({ message: 'Invalid package type' });
-    }
-
+    const { emailsPerMonth, packageDuration } = getPackageDetails(packageType);
+    
     const packageExpiry = new Date();
     packageExpiry.setDate(packageExpiry.getDate() + packageDuration);
 
-    try {
-        const newSubscription = new Subscription({
-            userId,
-            packageType,
-            emailsPerMonth,
-            packageExpiry
-        });
+    const newSubscription = new Subscription({
+        userId,
+        packageType,
+        emailsPerMonth,
+        packageExpiry
+    });
 
-        await newSubscription.save();
-        res.status(201).json(newSubscription);
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).json({ message: 'Server error' });
-    }
-};
+    await newSubscription.save();
+    res.status(201).json(newSubscription);
+});
