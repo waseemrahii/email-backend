@@ -14,7 +14,6 @@ const { isAuthenticated, isAdmin } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// Public Routes
 router.post('/signup', signup);
 router.post('/signin', signin);
 router.post('/forgot-password', forgotPassword);

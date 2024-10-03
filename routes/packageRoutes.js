@@ -14,7 +14,7 @@ const router = express.Router();
 router.post(
     '/',
     [
-        body('type').isIn(['basic', 'standard', 'premium']).withMessage('Invalid package type'),
+        body('type'),
         body('maxEmailsPerMonth').isInt().withMessage('Max emails per month must be an integer'),
         body('maxEmailsSentPerMonth').isInt().withMessage('Max emails sent per month must be an integer'), // Add validation
         body('packageDuration').isInt().withMessage('Package duration must be an integer'),

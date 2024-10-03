@@ -8,7 +8,7 @@ const SubscriptionSchema = new mongoose.Schema({
     },
     packageType: {
         type: String,
-        enum: ['basic', 'standard', 'premium'],
+        enum: ['free', 'enterprise', 'professional'],
         required: true
     },
   
