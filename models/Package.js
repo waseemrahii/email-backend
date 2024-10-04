@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const PackageSchema = new mongoose.Schema({
     type: {
         type: String,
-        enum: ['free', 'enterprise', 'professional'],
         required: true,
     },
     maxEmailsPerMonth: {
