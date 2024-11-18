@@ -7,11 +7,18 @@ const SubscriptionSchema = new mongoose.Schema({
         required: true
     },
     packageType: {
-        type: String,
-        enum: ['free', 'enterprise', 'professional'],
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Package',
         required: true
     },
-  
+    phoneCountry: {
+        type: String,
+        required: true
+    },
+    zipCode: {
+        type: String,
+        required: true
+    },
     isActive: {
         type: Boolean,
         default: true

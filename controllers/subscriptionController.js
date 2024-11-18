@@ -1,68 +1,81 @@
-// const Subscription = require('../models/Subscription');
-// const asyncHandler = require('express-async-handler');
-
-// const getPackageDetails = (packageType) => {
-//     switch (packageType) {
-//         case 'basic': return { emailsPerMonth: 10, packageDuration: 30 };
-//         case 'standard': return { emailsPerMonth: 50, packageDuration: 30 };
-//         case 'premium': return { emailsPerMonth: 100, packageDuration: 30 };
-//         default: throw new Error('Invalid package type');
-//     }
-// };
- 
-// exports.subscribePackage = asyncHandler(async (req, res) => {
-//     const { userId, packageType } = req.body;
-
-//     const { emailsPerMonth, packageDuration } = getPackageDetails(packageType);
-    
-//     const packageExpiry = new Date();
-//     packageExpiry.setDate(packageExpiry.getDate() + packageDuration);
-
-//     const newSubscription = new Subscription({
-//         userId,
-//         packageType,
-//         emailsPerMonth,
-//         packageExpiry
-//     });
-
-//     await newSubscription.save();
-//     res.status(201).json(newSubscription);
-// });
-
-
 const Subscription = require('../models/Subscription');
 const Package = require('../models/Package');
 const asyncHandler = require('express-async-handler');
+const Stripe = require('stripe');
+const User = require('../models/User');
+const stripe = Stripe('sk_test_51Pwpi4023TaI0bKzl1dal6jK7njGYiTgT3Qr7Nt184Qr3wCyrr5pS5BP18NXj9GQAyeb9260jYQuCHN500GRv0kb00cRGQqW18'); // Replace with your Stripe secret key
 
+// Subscribe to a package (with payment processing)
 const subscribePackage = asyncHandler(async (req, res) => {
-    const { userId, packageType } = req.body;
+    const { userId, packageType, paymentMethodId, phoneCountry, zipCode } = req.body;
 
-    const package = await Package.findOne({ type: packageType });
+    // Find the package
+    const package = await Package.findById(packageType);
     if (!package) {
         return res.status(400).json({ message: 'Invalid package type' });
     }
 
-    const packageExpiry = new Date();
-    packageExpiry.setDate(packageExpiry.getDate() + package.packageDuration); // Assuming packageDuration is in days
+    if (package.price === 0) {
+        // Free package: No payment required
+        const subscription = await Subscription.create({
+            userId,
+            packageType: package._id,
+            phoneCountry,
+            zipCode,
+            isActive: true
+        });
 
-    const subscription = await Subscription.create({
-        userId,
-        packageType,
-        emailsPerMonth: package.emailsPerMonth,
-        packageExpiry
-    });
+        // Update user's subscription field
+        await User.findByIdAndUpdate(userId, { subscription: subscription._id });
 
-    return res.status(201).json(subscription);
+        return res.status(201).json({ subscription, message: 'Free package subscribed successfully' });
+    }
+
+    // Paid package: Process payment
+    const amount = package.price * 100; // Convert price to cents
+    const currency = 'usd'; // Set currency
+
+    try {
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount,
+            currency,
+            payment_method: paymentMethodId,
+            confirm: true
+        });
+
+        const subscription = await Subscription.create({
+            userId,
+            packageType: package._id,
+            phoneCountry,
+            zipCode,
+            isActive: true
+        });
+
+        // Update user's subscription field
+        await User.findByIdAndUpdate(userId, { subscription: subscription._id });
+
+        return res.status(201).json({ subscription });
+    } catch (error) {
+        console.error('Payment error:', error);
+        return res.status(400).json({ message: 'Payment failed', error });
+    }
 });
 
+// Get all subscriptions with populated user and packageType
 const getSubscriptions = asyncHandler(async (req, res) => {
-    const subscriptions = await Subscription.find().populate('userId', 'name email'); // Populate user details
+    const subscriptions = await Subscription.find()
+        .populate('userId', 'name email') // Populate user details
+        .populate('packageType', 'type price maxEmailsPerMonth maxEmailsSentPerMonth'); // Populate packageType details
+
     return res.status(200).json(subscriptions);
 });
 
+// Get subscription by ID with populated user and packageType
 const getSubscriptionById = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const subscription = await Subscription.findById(id).populate('userId', 'name email');
+    const subscription = await Subscription.findById(id)
+        .populate('userId', 'name email') // Populate user details
+        .populate('packageType', 'type price maxEmailsPerMonth maxEmailsSentPerMonth'); // Populate packageType details
 
     if (!subscription) {
         return res.status(404).json({ message: 'Subscription not found' });
@@ -89,11 +102,11 @@ const updateSubscription = asyncHandler(async (req, res) => {
         id,
         {
             packageType,
-            emailsPerMonth: package.emailsPerMonth,
+            emailsPerMonth: package.maxEmailsPerMonth,
             packageExpiry
         },
         { new: true }
-    );
+    ).populate('packageType', 'type price maxEmailsPerMonth maxEmailsSentPerMonth'); // Populate updated packageType details
 
     if (!updatedSubscription) {
         return res.status(404).json({ message: 'Subscription not found' });
@@ -101,6 +114,26 @@ const updateSubscription = asyncHandler(async (req, res) => {
 
     return res.status(200).json(updatedSubscription);
 });
+
+
+
+// const updateSubscription = async (req, res) => {
+//     const { userId, subscriptionId } = req.body;
+
+//     try {
+//         const user = await User.findById(userId); // Find user using userId from req.body
+//         if (!user) {
+//             return res.status(404).json({ message: 'User not found' });
+//         }
+
+//         user.subscription = subscriptionId; // Update subscription ID
+//         await user.save();
+
+//         res.status(200).json({ message: 'Subscription updated successfully', user });
+//     } catch (error) {
+//         res.status(500).json({ message: 'Server error', error });
+//     }
+// };
 
 // Delete a subscription
 const deleteSubscription = asyncHandler(async (req, res) => {

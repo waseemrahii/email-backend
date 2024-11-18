@@ -3,9 +3,12 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
+
+
+
 // Signup controller
 exports.signup = async (req, res) => {
-    const { name, email, password } = req.body;
+    const { username, email, password, phone, country, address } = req.body;
 
     try {
         const userExists = await User.findOne({ email });
@@ -14,9 +17,12 @@ exports.signup = async (req, res) => {
         }
 
         const newUser = new User({
-            name,
+            username,
             email,
-            password
+            password,
+            phone,
+            country,
+            address
         });
 
         await newUser.save();
@@ -25,24 +31,31 @@ exports.signup = async (req, res) => {
 
         res.status(201).json({
             token,
-            user: { id: newUser._id, name: newUser.name, email: newUser.email, role: newUser.role }
+            user: { 
+                id: newUser._id, 
+                username: newUser.username, 
+                email: newUser.email, 
+                role: newUser.role,
+                subscription: newUser.subscription  // Include subscription information
+            }
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }
 };
 
-// Signin controller
+
+// Signin controller// Signin controller
 exports.signin = async (req, res) => {
     const { email, password } = req.body;
 
     try {
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email }).populate('subscription');  // Populate subscription field
         if (!user) {
             return res.status(400).json({ message: 'Invalid email or password' });
         }
 
-        const isMatch = await user.matchPassword(password);
+        const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(400).json({ message: 'Invalid email or password' });
         }
@@ -51,12 +64,24 @@ exports.signin = async (req, res) => {
 
         res.json({
             token,
-            user: { id: user._id, name: user.name, email: user.email, role: user.role }
+            user: {
+                _id: user._id,
+                username: user.username,
+                email: user.email,
+                address: user.address,
+                phone: user.phone,
+                country: user.country,
+                role: user.role,
+                subscription: user.subscription, // Include populated subscription data (which includes packageType)
+                createdAt: user.createdAt
+            }
         });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error });
     }
 };
+
+
 
 
 exports.updateSubscription = async (req, res) => {
@@ -163,25 +188,27 @@ exports.deleteUser = async (req, res) => {
     }
 };
 
-// Get all users controller (admin only)
-exports.getAllUsers = async (req, res) => {
-    try {
-        const users = await User.find();
-        res.status(200).json(users);
-    } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
-    }
-};
-
-
+// Get all users controller (admin only)// Get user by ID
 exports.getUserById = async (req, res) => {
     try {
-        const user = await User.findById(req.params.id).select('-password'); // Exclude password field
+        const user = await User.findById(req.params.id).select('-password').populate('subscription');  // Populate subscription field
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
         res.json(user);
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
+    }
+};
+
+
+
+// Get all users controller (admin only)
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find().populate('subscription');  // Populate subscription field for all users
+        res.status(200).json(users);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
     }
 };
